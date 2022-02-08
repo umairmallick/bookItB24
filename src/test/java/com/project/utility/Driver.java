@@ -3,77 +3,89 @@ package com.project.utility;
 import io.github.bonigarcia.wdm.WebDriverManager;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeDriver;
+import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.firefox.FirefoxDriver;
-import org.openqa.selenium.safari.SafariDriver;
+import org.openqa.selenium.remote.CapabilityType;
+
+import java.util.concurrent.TimeUnit;
 
 public class Driver {
 
-    private static WebDriver obj;
 
-
-    private Driver(){
-
+    /*
+     Creating the private constructor so this class' object
+     is not reachable from outside
+      */
+    private Driver() {
     }
 
-    /**
-     * Return obj with only one WebDriver instance
-     * @return
+    /*
+    Making our 'driver' instance private so that it is not reachable from outside of the class.
+    We make it static, because we want it to run before everything else, and also we will use it in a static method
      */
+    private static ThreadLocal<WebDriver> driverPool = new ThreadLocal<>();
 
-    public static WebDriver getDriver(){
-        //read the browser type you want to launch from properties file
-        String browserName= ConfigurationReader.getProperty("browser");
+    /*
+    Creating re-usable utility method that will return same 'driver' instance everytime we call it.
+     */
+    public static WebDriver getDriver() {
 
-        if(obj==null) {
-            switch (browserName.toLowerCase().trim()) {
-                case "chrome":
-                    WebDriverManager.chromedriver().setup();
-                    obj = new ChromeDriver();
-                    obj.manage().window().maximize();
-                    break;
+        if (driverPool.get() == null) {
 
-                case "firefox":
-                    WebDriverManager.firefoxdriver().setup();
-                    obj = new FirefoxDriver();
-                    break;
-                case"safari":
-                    WebDriverManager.safaridriver().setup();
-                    obj=new SafariDriver();
-                    break;
-                default:
-                    obj = null;
-                    //System.out.println("Unknown browser type! " + browserName);
+            synchronized (Driver.class) {
+            /*
+            We read our browser type from configuration.properties file using
+            .getProperty method we creating in ConfigurationReader class.
+             */
+                String browserType = ConfigurationReader.getProperty("browser");
+
+            /*
+            Depending on the browser type our switch statement will determine
+            to open specific type of browser/driver
+             */
+                switch (browserType) {
+                    case "chrome":
+                        WebDriverManager.chromedriver().setup();
+                        driverPool.set(new ChromeDriver());
+                        //driverPool.get().manage().window().maximize();
+                        driverPool.get().manage().timeouts().implicitlyWait(10, TimeUnit.SECONDS);
+                        break;
+                    case "firefox":
+                        WebDriverManager.firefoxdriver().setup();
+                        driverPool.set(new FirefoxDriver());
+                        driverPool.get().manage().window().maximize();
+                        driverPool.get().manage().timeouts().implicitlyWait(10, TimeUnit.SECONDS);
+                        break;
+                    case "chromeSSL":
+                        WebDriverManager.chromedriver().setup();
+                        ChromeOptions capability = new ChromeOptions();
+                        capability.setCapability(CapabilityType.ACCEPT_SSL_CERTS,true);
+                        capability.setCapability(CapabilityType.ACCEPT_INSECURE_CERTS,true);
+                        driverPool.set(new ChromeDriver(capability));
+                        driverPool.get().manage().window().maximize();
+                        driverPool.get().manage().timeouts().implicitlyWait(10, TimeUnit.SECONDS);
+                        break;
+                }
             }
-
-            return obj;
-
-
-        }else {
-            // System.out.println("You have it just use existing one");
-            return obj;
         }
-    }
 
-    /**
-     * Quitting the browser and setting the value of
-     * WebDriver instance to null because you can re-use already quitted driver
-     */
-    public static void closeBrowser(){
-        /**check if we have WebDriver instance or not
-        *basically checking if obj is null or not
-        *if not null
-        *quit the browser
-        *make it null, because once quit it can not be used
+        /*
+        Same driver instance will be returned every time we call Driver.getDriver(); method
          */
+        return driverPool.get();
 
-        if(obj!=null){
-            obj.quit();
-            obj = null;
-        }
 
     }
 
-
-
+    /*
+    This method makes sure we have some form of driver sesion or driver id has.
+    Either null or not null it must exist.
+     */
+    public static void closeDriver() {
+        if (driverPool.get() != null) {
+            driverPool.get().quit();
+            driverPool.remove();
+        }
+    }
 
 }
